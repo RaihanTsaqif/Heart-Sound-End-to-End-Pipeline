@@ -35,10 +35,16 @@ http://127.0.0.1:8010
 Upload a `.wav`, `.flac`, or `.ogg` recording. The app shows each stage's result,
 probabilities, runtime, and segmentation bands when a murmur is detected.
 
+No recording handy? The [`heart sound recording examples/`](heart%20sound%20recording%20examples/)
+directory has ready-to-use sample files (CirCor and StetoQ heart sounds) you can
+download and run through the program. See its
+[README](heart%20sound%20recording%20examples/README.md) for the file list.
+
 Command-line use:
 
 ```bash
 python run_pipeline.py path/to/audio.wav
+python run_pipeline.py "heart sound recording examples/85336_MV.wav"
 python run_pipeline.py path/to/folder --json results.json --csv results.csv
 ```
 
