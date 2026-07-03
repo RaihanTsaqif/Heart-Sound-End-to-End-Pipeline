@@ -125,15 +125,30 @@ Tests run on independent heart-sound datasets:
 | HSCT11 random sample | 50 | 49 / 50 (98.0%) | 48 / 50 (96.0%) |
 | StetoQ local recordings | 4 | 4 / 4 (100.0%) | 4 / 4 (100.0%) |
 
-The CirCor row is different in kind from the other two: the 300 CirCor recordings
-are the gate's own **training** heart-sound source, so its number is the
-cross-validated recall on held-out folds (how many real heart sounds the gate
-correctly keeps), not an out-of-domain test. HSCT11 and StetoQ are independent
-datasets the trained gate is applied to, so they measure generalization to unseen
-recordings and devices. All are reported as "kept as HEART," since these are all
-heart-sound corpora and the gate should keep them.
+Note that the CirCor row measures something different from the other two. CirCor 
+is the gate's training source, so its number is a cross-validated recall. HSCT11 and StetoQ are independent 
+datasets, so they measure generalization to unseen recordings and devices.
+
+The tables above only cover the positive (heart) side. The gate is also scored on
+non-heart audio — how often it correctly *rejects* recordings that are not heart
+sounds. These come from the same 5-fold CV as the CirCor row (549 non-heart files:
+lung sounds, speech, and random noise):
+
+| Non-heart category | Files | Logistic regression rejected | RBF-SVM rejected |
+|---|---:|---:|---:|
+| Lung sounds | 336 | 99.4% | 100.0% |
+| Clean speech | 105 | 96.2% | 100.0% |
+| Noisy speech | 105 | 91.4% | 93.3% |
+| Random noise | 3 | 66.7% | 66.7% |
+| **Overall** | **549** | **97.1%** | **98.5%** |
+
+Random noise is the weakest category, but with only 3 files that number is not
+reliable and needs more data before it means anything. Lung sounds and speech —
+the realistic sources of junk input — are rejected at 96-100%.
 
 ### Murmur Classifier
+
+
 
 Held-out CirCor patients (`n=133`, threshold `0.5`):
 
