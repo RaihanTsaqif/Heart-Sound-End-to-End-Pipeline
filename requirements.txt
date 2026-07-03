@@ -1,0 +1,8 @@
+numpy
+scipy
+soundfile
+librosa
+ssqueezepy
+onnxruntime
+scikit-learn
+PyWavelets

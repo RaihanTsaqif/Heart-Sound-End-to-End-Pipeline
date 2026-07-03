@@ -1,0 +1,183 @@
+# Heart Sound End-to-End Pipeline
+
+Local end-to-end phonocardiogram pipeline:
+
+1. **Heart sound gate**: Tang SQA features decide heart sound vs no-heart input.
+2. **Murmur classifier**: CirCor CRNN decides murmur Present vs Absent.
+3. **Segmentation**: 30-epoch/1,200-window CirCor-fine-tuned model labels S1,
+   Systole, S2, and Diastole.
+4. **Timing**: median 150-450 Hz murmur-band energy is compared inside segmented
+   systole vs diastole to call Systolic or Diastolic.
+
+The project includes a local browser interface and a command-line runner. It is
+structured as a standalone repo so it can be pushed to GitHub.
+
+## Quick Start
+
+```bash
+pip install -r requirements.txt
+python app/server.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8010
+```
+
+Upload a `.wav`, `.flac`, or `.ogg` recording. The app shows each stage's result,
+probabilities, runtime, and segmentation bands when a murmur is detected.
+
+Command-line use:
+
+```bash
+python run_pipeline.py path/to/audio.wav
+python run_pipeline.py path/to/folder --json results.json --csv results.csv
+```
+
+## Pipeline Decisions
+
+### 1. Heart Sound Gate
+
+The gate extracts the 10 Tang SQA features at 1 kHz using the code in
+`sqa_gate/`, then trains two small scikit-learn models at startup from
+`sqa_gate/heart_no_heart_training_features.csv`.
+
+Upstream reference: [tanghongdlut/signal-quality-assessment-of-heart-sound-signal](https://github.com/tanghongdlut/signal-quality-assessment-of-heart-sound-signal).
+
+The pipeline decision uses logistic regression probability:
+
+```text
+p_heart >= 0.5 -> heart sound
+p_heart <  0.5 -> no-heart input
+```
+
+The RBF-SVM probability is also shown as a secondary check.
+
+### 2. Murmur Classifier
+
+The murmur classifier is the same CirCor CRNN from the previous pipeline. It runs
+from `onnx/murmur_crnn_circor.onnx`.
+
+Upstream reference: [SiyuLou/AutomaticHeartSoundClassification](https://github.com/SiyuLou/AutomaticHeartSoundClassification).
+
+```text
+P[Present] >= 0.5 -> murmur present
+P[Present] <  0.5 -> murmur absent
+```
+
+### 3. Segmentation
+
+The segmenter uses:
+
+```text
+models/segmenter_finetuned_circor_datascale1200_ep30.pth
+onnx/segmenter_emissions_datascale1200_ep30.onnx
+onnx/segmenter_crf_transitions_datascale1200_ep30.npz
+```
+
+The ONNX graph exports the emission network. Viterbi decoding is done in Python
+with the saved CRF transition tables.
+
+Upstream reference: [alvgaona/heart-sounds-segmentation](https://github.com/alvgaona/heart-sounds-segmentation).
+
+### 4. Systolic / Diastolic Timing
+
+This is rule-based, not a trained classifier:
+
+1. Resample to 1 kHz.
+2. Bandpass the signal to 150-450 Hz.
+3. Square the filtered signal to estimate murmur-band energy.
+4. Use the segmentation labels to split energy by phase.
+5. Compare median energy in Systole vs Diastole.
+
+```text
+median systolic energy >= median diastolic energy -> SYSTOLIC
+otherwise -> DIASTOLIC
+```
+
+## Performance Notes
+
+These are the current project test numbers. The timing rule is intentionally not
+reported as a strong accuracy metric because the available labelled timing data
+is too imbalanced for diastolic murmurs.
+
+### Heart Sound Gate
+
+Training source:
+
+```text
+849 files total: 300 heart / 549 no-heart
+```
+
+Tests run on independent heart-sound datasets:
+
+| Dataset | Files | Logistic regression HEART | RBF-SVM HEART |
+|---|---:|---:|---:|
+| HSCT11 random sample | 50 | 49 / 50 (98.0%) | 48 / 50 (96.0%) |
+| PhysioNet 2016 random sample | 100 | 65 / 100 (65.0%) | 67 / 100 (67.0%) |
+| StetoQ local recordings | 4 | 4 / 4 (100.0%) | 4 / 4 (100.0%) |
+
+The PhysioNet result should be interpreted carefully: this gate was trained as a
+heart-vs-noise/open-input filter using Tang SQA features, not as a clinical
+quality classifier for every heart-sound corpus.
+
+### Murmur Classifier
+
+Held-out CirCor patients (`n=133`, threshold `0.5`):
+
+| True \ Pred | Present | Absent |
+|---|---:|---:|
+| Present | 25 | 3 |
+| Absent | 1 | 104 |
+
+| Accuracy | Sensitivity | Specificity | Balanced accuracy | F1 |
+|---:|---:|---:|---:|---:|
+| 96.99% | 89.29% | 99.05% | 94.17% | 92.59% |
+
+### Segmentation Model
+
+30-epoch/1,200-window CirCor fine-tune, held-out test set (`n=120`
+recordings, frame-level):
+
+| Metric | Value |
+|---|---:|
+| Overall frame accuracy | 88.18% |
+| Balanced frame accuracy | 87.21% |
+
+| Class | Recall | Precision | F1 |
+|---|---:|---:|---:|
+| S1 | 86.40% | 85.67% | 86.04% |
+| Systole | 87.32% | 87.09% | 87.20% |
+| S2 | 83.71% | 83.02% | 83.36% |
+| Diastole | 91.43% | 92.27% | 91.84% |
+
+The ONNX export was checked against PyTorch emissions:
+
+```text
+max absolute difference: 1.15e-06
+dynamic sequence input: verified
+```
+
+## Re-export Segmenter ONNX
+
+The exporter is self-contained so it does not need the upstream segmentation
+package's Linux-only `ssq` import:
+
+```bash
+pip install -r requirements-pytorch-export.txt
+python pytorch/export_segmenter_onnx.py
+```
+
+On Windows, if the newest `onnx` wheel hits long-path issues, use `onnx==1.16.2`
+or install ONNX into a short temporary path for export.
+
+## Attribution
+
+This project builds on the prior local pipeline and three upstream projects:
+
+- Tang Hong's signal-quality assessment code for heart-sound signals
+- SiyuLou's Automatic Heart Sound Classification CRNN
+- Alvaro Gaona's heart-sounds-segmentation model
+
+See `LICENSE` and `THIRD_PARTY_NOTICES.md`.
