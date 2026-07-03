@@ -9,6 +9,13 @@ Local end-to-end phonocardiogram pipeline:
 4. **Timing**: median 150-450 Hz murmur-band energy is compared inside segmented
    systole vs diastole to call Systolic or Diastolic.
 
+The two neural-network stages — the murmur classifier and the segmenter's
+emission network — are **PyTorch models exported to ONNX** and served with ONNX
+Runtime, so inference has no PyTorch dependency. The heart-sound gate is a
+classical scikit-learn model and the timing stage is a rule-based DSP
+calculation. The original `.pth` checkpoints are kept in `models/` for provenance
+and re-export only (see [Re-export Segmenter ONNX](#re-export-segmenter-onnx)).
+
 The project includes a local browser interface and a command-line runner. It is
 structured as a standalone repo so it can be pushed to GitHub.
 
@@ -114,13 +121,17 @@ Tests run on independent heart-sound datasets:
 
 | Dataset | Files | Logistic regression HEART | RBF-SVM HEART |
 |---|---:|---:|---:|
+| CirCor (5-fold CV, held-out) | 300 | 96.7% | 98.7% |
 | HSCT11 random sample | 50 | 49 / 50 (98.0%) | 48 / 50 (96.0%) |
-| PhysioNet 2016 random sample | 100 | 65 / 100 (65.0%) | 67 / 100 (67.0%) |
 | StetoQ local recordings | 4 | 4 / 4 (100.0%) | 4 / 4 (100.0%) |
 
-The PhysioNet result should be interpreted carefully: this gate was trained as a
-heart-vs-noise/open-input filter using Tang SQA features, not as a clinical
-quality classifier for every heart-sound corpus.
+The CirCor row is different in kind from the other two: the 300 CirCor recordings
+are the gate's own **training** heart-sound source, so its number is the
+cross-validated recall on held-out folds (how many real heart sounds the gate
+correctly keeps), not an out-of-domain test. HSCT11 and StetoQ are independent
+datasets the trained gate is applied to, so they measure generalization to unseen
+recordings and devices. All are reported as "kept as HEART," since these are all
+heart-sound corpora and the gate should keep them.
 
 ### Murmur Classifier
 
